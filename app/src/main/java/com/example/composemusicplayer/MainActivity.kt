@@ -27,12 +27,23 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
@@ -45,6 +56,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.example.composemusicplayer.domain.models.Track
@@ -54,6 +67,7 @@ import com.example.composemusicplayer.presentation.viewmodels.TrackListViewModel
 import com.example.composemusicplayer.ui.theme.ComposeMusicPlayerTheme
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -104,6 +118,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainTrackListScreen(
     viewModel: TrackListViewModel,
@@ -113,9 +128,29 @@ fun MainTrackListScreen(
 ) {
     val trackList = viewModel.trackListState.collectAsState().value
     val playerDialogState = viewModel.playerDialogState.collectAsState().value
-
+    val currentTrackState = viewModel.currentTrackState.collectAsState().value
     LaunchedEffect(Unit) {
         viewModel.getAllTracks()
+    }
+
+    if (playerDialogState) {
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.changeDialogState() },
+        ) {
+            currentTrackState?.apply {
+                MainTrackScreenBottomSheet(
+                    trackImage = cover?.asImageBitmap(),
+                    trackName = trackName,
+                    artistName = artistName ?: "Unknown",
+                    timing = getTiming(timing.toLong()),
+                    startIconEnable = true,
+                    screenTitle = "Сейчас играет",
+                    allTracksIconEnable = true,
+                    modifier = Modifier,
+                    player = player
+                )
+            }
+        }
     }
 
     LazyColumn(
@@ -129,6 +164,8 @@ fun MainTrackListScreen(
                 uri = track.uri.toUri(),
                 timing = getTiming(track.timing.toLong()),
                 onClick = {
+                    viewModel.changeDialogState()
+                    viewModel.setCurrentTrackState(track)
                     startPlayer(
                         player,
                         trackList,
@@ -174,6 +211,7 @@ fun AppToolbar(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainTrackScreenBottomSheet(
     trackImage: ImageBitmap?,
@@ -184,7 +222,36 @@ fun MainTrackScreenBottomSheet(
     screenTitle: String,
     allTracksIconEnable: Boolean,
     modifier: Modifier,
+    player: PlaybackService
 ) {
+    var currentProgress by remember {
+        mutableLongStateOf(0L)
+    }
+    var isPlayingState by remember {
+        mutableStateOf(false)
+    }
+
+    DisposableEffect(Unit) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                isPlayingState = isPlaying
+            }
+        }
+        player.player?.addListener(listener)
+        onDispose {
+            player.player?.removeListener(listener)
+        }
+    }
+
+    if (isPlayingState) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                currentProgress = player.player?.currentPosition ?: 0L
+                delay(1000)
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             AppToolbar(
@@ -195,11 +262,56 @@ fun MainTrackScreenBottomSheet(
             )
         }
     ) { innerPadding ->
-        Text(
-            modifier = Modifier
-                .padding(innerPadding),
-            text = "Keks"
-        )
+
+        Column {
+            trackImage?.let {
+                Image(
+                    bitmap = it,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .size(500.dp)
+                        .padding(innerPadding)
+                )
+            }
+            if (trackImage == null) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_arrow),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .size(500.dp)
+                        .padding(innerPadding)
+                )
+            }
+            player.player?.let {
+                Slider(
+                    value = calculateProgress(currentProgress, it.contentDuration),
+                    onValueChange = { newProgress ->
+                        player.player?.seekTo((newProgress * it.contentDuration).toLong())
+                        currentProgress = newProgress.toLong()
+                    },
+                )
+            }
+            Row {
+                Button(onClick = {
+                    player.player?.seekBack()
+                }) {
+                    Text(text = "Prev")
+                }
+                Button(onClick = {
+                    println(player.player?.currentPosition)
+                    player.player?.pause()
+                }) {
+                    Text(text = "Pause")
+                }
+                Button(onClick = {
+                    player.player?.seekToNext()
+                }) {
+                    Text(text = "Next")
+                }
+            }
+        }
     }
 }
 
@@ -266,7 +378,8 @@ fun startPlayer(
     player.player?.apply {
         println("notnull")
         setMediaItems(
-            trackList.toMediaItems(), position, 0L)
+            trackList.toMediaItems(), position, 0L
+        )
         prepare()
         play()
     }
@@ -274,4 +387,10 @@ fun startPlayer(
 
 fun List<Track>.toMediaItems(): List<MediaItem> {
     return map { track -> track.toMediaItem() }
+}
+
+fun calculateProgress(currentTime: Long, duration: Long): Float {
+    return if (duration > 0) {
+        (currentTime.toFloat() / duration).coerceIn(0f, 1f)
+    } else 0f
 }

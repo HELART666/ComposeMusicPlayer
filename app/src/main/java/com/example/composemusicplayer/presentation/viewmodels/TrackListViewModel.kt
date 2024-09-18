@@ -17,6 +17,8 @@ class TrackListViewModel @Inject constructor(
 ) : ViewModel() {
     private val _trackListState = MutableStateFlow<List<Track>>(emptyList())
     val trackListState = _trackListState.asStateFlow()
+    private val _currentTrackState = MutableStateFlow<Track?>(null)
+    val currentTrackState = _currentTrackState.asStateFlow()
     private val _playerDialogState = MutableStateFlow(false)
     val playerDialogState = _playerDialogState.asStateFlow()
 
@@ -30,5 +32,9 @@ class TrackListViewModel @Inject constructor(
 
     fun changeDialogState() {
         _playerDialogState.value = !_playerDialogState.value
+    }
+
+    fun setCurrentTrackState(track: Track) {
+        _currentTrackState.value = track
     }
 }
