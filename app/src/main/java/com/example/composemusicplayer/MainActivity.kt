@@ -5,9 +5,7 @@ import android.Manifest.permission.POST_NOTIFICATIONS
 import android.Manifest.permission.READ_MEDIA_AUDIO
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
-import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -27,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
@@ -46,18 +45,15 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
-import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
-import androidx.media3.ui.PlayerView
+import com.example.composemusicplayer.domain.models.Track
+import com.example.composemusicplayer.domain.models.toMediaItem
 import com.example.composemusicplayer.presentation.playerService.PlaybackService
 import com.example.composemusicplayer.presentation.viewmodels.TrackListViewModel
 import com.example.composemusicplayer.ui.theme.ComposeMusicPlayerTheme
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -125,7 +121,7 @@ fun MainTrackListScreen(
     LazyColumn(
         modifier = modifier
     ) {
-        items(trackList) { track ->
+        itemsIndexed(trackList) { index, track ->
             TrackCard(
                 icon = track.cover,
                 trackName = track.trackName,
@@ -133,10 +129,10 @@ fun MainTrackListScreen(
                 uri = track.uri.toUri(),
                 timing = getTiming(track.timing.toLong()),
                 onClick = {
-                    val currentTrack = MediaItem.fromUri(track.uri)
                     startPlayer(
                         player,
-                        currentTrack
+                        trackList,
+                        index
                     )
                 },
             )
@@ -264,12 +260,18 @@ fun getTiming(milliseconds: Long): String {
 
 fun startPlayer(
     player: PlaybackService,
-    track: MediaItem,
+    trackList: List<Track>,
+    position: Int
 ) {
     player.player?.apply {
         println("notnull")
-        setMediaItem(track)
+        setMediaItems(
+            trackList.toMediaItems(), position, 0L)
         prepare()
         play()
     }
+}
+
+fun List<Track>.toMediaItems(): List<MediaItem> {
+    return map { track -> track.toMediaItem() }
 }
