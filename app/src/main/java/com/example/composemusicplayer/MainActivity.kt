@@ -110,7 +110,6 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier
                             .padding(innerPadding),
                         player = service,
-                        context = this
                     )
                 }
             }
@@ -124,7 +123,6 @@ fun MainTrackListScreen(
     viewModel: TrackListViewModel,
     modifier: Modifier,
     player: PlaybackService,
-    context: Context,
 ) {
     val trackList = viewModel.trackListState.collectAsState().value
     val playerDialogState = viewModel.playerDialogState.collectAsState().value
@@ -139,10 +137,8 @@ fun MainTrackListScreen(
         ) {
             currentTrackState?.apply {
                 MainTrackScreenBottomSheet(
-                    trackImage = cover?.asImageBitmap(),
-                    trackName = trackName,
-                    artistName = artistName ?: "Unknown",
-                    timing = getTiming(timing.toLong()),
+                    viewModel = viewModel,
+                    track = currentTrackState,
                     startIconEnable = true,
                     screenTitle = "Сейчас играет",
                     allTracksIconEnable = true,
@@ -161,7 +157,6 @@ fun MainTrackListScreen(
                 icon = track.cover,
                 trackName = track.trackName,
                 artistName = track.artistName,
-                uri = track.uri.toUri(),
                 timing = getTiming(track.timing.toLong()),
                 onClick = {
                     viewModel.changeDialogState()
@@ -211,13 +206,10 @@ fun AppToolbar(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainTrackScreenBottomSheet(
-    trackImage: ImageBitmap?,
-    trackName: String,
-    artistName: String,
-    timing: String,
+    viewModel: TrackListViewModel,
+    track: Track,
     startIconEnable: Boolean,
     screenTitle: String,
     allTracksIconEnable: Boolean,
@@ -262,25 +254,29 @@ fun MainTrackScreenBottomSheet(
             )
         }
     ) { innerPadding ->
-
         Column {
-            trackImage?.let {
+            track.cover?.let {
                 Image(
-                    bitmap = it,
+                    bitmap = it.asImageBitmap(),
                     contentDescription = null,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
                         .size(500.dp)
-                        .padding(innerPadding)
+                        .clip(RoundedCornerShape(25.dp))
+                        .padding(
+                            top = innerPadding.calculateTopPadding(),
+                            bottom = innerPadding.calculateBottomPadding(),
+                            start = 16.dp,
+                            end = 16.dp
+                        )
                 )
             }
-            if (trackImage == null) {
+            if (track.cover == null) {
                 Image(
                     painter = painterResource(id = R.drawable.ic_arrow),
                     contentDescription = null,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
                         .size(500.dp)
+                        .clip(RoundedCornerShape(25.dp))
                         .padding(innerPadding)
                 )
             }
@@ -293,20 +289,43 @@ fun MainTrackScreenBottomSheet(
                     },
                 )
             }
-            Row {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = getTiming(currentProgress))
+                Text(text = player.player?.contentDuration?.let { getTiming(it) } ?: "00:00")
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
                 Button(onClick = {
                     player.player?.seekBack()
                 }) {
                     Text(text = "Prev")
                 }
-                Button(onClick = {
-                    println(player.player?.currentPosition)
-                    player.player?.pause()
-                }) {
-                    Text(text = "Pause")
+                if (isPlayingState) {
+                    Button(onClick = {
+                        player.player?.pause()
+                    }) {
+                        Text(text = "Pause")
+                    }
+                } else {
+                    Button(onClick = {
+                        player.player?.play()
+                    }) {
+                        Text(text = "Play")
+                    }
                 }
                 Button(onClick = {
                     player.player?.seekToNext()
+                    val newMedia = player.player?.currentMediaItem
+
+                    viewModel.setCurrentTrackState()
+
                 }) {
                     Text(text = "Next")
                 }
@@ -320,7 +339,6 @@ fun TrackCard(
     icon: Bitmap?,
     trackName: String,
     artistName: String?,
-    uri: Uri,
     timing: String,
     onClick: () -> Unit,
 ) {
