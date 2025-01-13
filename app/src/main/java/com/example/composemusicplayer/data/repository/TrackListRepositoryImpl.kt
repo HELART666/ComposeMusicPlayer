@@ -7,16 +7,22 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.core.net.toUri
+import com.example.composemusicplayer.data.api.TrackListApi
 import com.example.composemusicplayer.domain.models.Track
+import com.example.composemusicplayer.domain.models.TrackServer
 import com.example.composemusicplayer.domain.repository.TrackListRepository
+import com.example.composemusicplayer.state.ScreenState
+import com.example.composemusicplayer.utils.BaseRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
+import okhttp3.MultipartBody
 import javax.inject.Inject
 
 class TrackListRepositoryImpl @Inject constructor(
     private val applicationContext: Context,
-    private val mediaMetadataRetriever: MediaMetadataRetriever
-) : TrackListRepository {
+    private val mediaMetadataRetriever: MediaMetadataRetriever,
+    private val trackListApi: TrackListApi
+) : BaseRepository(), TrackListRepository {
     override suspend fun getAllTracks(): Flow<Track> {
 
         val audioFiles = mutableListOf<Track>()
@@ -48,7 +54,10 @@ class TrackListRepositoryImpl @Inject constructor(
                     cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION))
                 val filePath =
                     cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA))
-                val cover = getAlbumArt(cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)).toUri())
+                val cover = getAlbumArt(
+                    cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA))
+                        .toUri()
+                )
 
                 audioFiles.add(
                     Track(
@@ -65,6 +74,19 @@ class TrackListRepositoryImpl @Inject constructor(
         }
         return audioFiles.asFlow()
     }
+
+    override suspend fun getAllTracksByServer(): ScreenState<List<TrackServer>> =
+        safeApiCall {
+            trackListApi.getAllTracks()
+        }
+
+    override suspend fun sendTrackToServer(
+        multipartBody: MultipartBody.Part,
+        userId: MultipartBody.Part,
+    ) =
+        safeApiCall {
+            trackListApi.sendTrack(multipartBody, userId)
+        }
 
     override fun getAlbumArt(path: Uri): Bitmap? {
         mediaMetadataRetriever.setDataSource(applicationContext, path)
